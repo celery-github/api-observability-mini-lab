@@ -1,0 +1,5 @@
+[
+  { "name": "GitHub API", "url": "https://api.github.com" },
+  { "name": "Open-Meteo Forecast", "url": "https://api.open-meteo.com/v1/forecast?latitude=43.65&longitude=-79.38&current_weather=true" },
+  { "name": "OpenLibrary Search", "url": "https://openlibrary.org/search.json?q=devops" }
+]
