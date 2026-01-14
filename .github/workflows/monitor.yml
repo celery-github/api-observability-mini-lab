@@ -108,3 +108,117 @@ jobs:
           git add docs/data/*.json
           git commit -m "Update monitoring data" || echo "No changes to commit"
           git push
+          - name: Create/Close Issues based on alerts + recoveries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+
+          alerts_path = "docs/data/alerts.json"
+          recoveries_path = "docs/data/recoveries.json"
+          state_path = "docs/data/state.json"
+
+          with open(alerts_path, "r", encoding="utf-8") as f:
+            alerts = json.load(f).get("alerts", [])
+
+          with open(recoveries_path, "r", encoding="utf-8") as f:
+            recoveries = json.load(f).get("recoveries", [])
+
+          with open(state_path, "r", encoding="utf-8") as f:
+            state = json.load(f)
+
+          def gh_api(method, url, data=None):
+            token = os.environ["GH_TOKEN"]
+            req = urllib.request.Request(
+              url,
+              method=method,
+              headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "api-observability-mini-lab",
+              },
+              data=(json.dumps(data).encode("utf-8") if data else None)
+            )
+            with urllib.request.urlopen(req) as resp:
+              return json.loads(resp.read().decode("utf-8"))
+
+          repo = os.environ["REPO"]
+          created = 0
+          closed = 0
+
+          # ---- Create issues for alerts ----
+          for a in alerts:
+            url_key = a["url"]
+            if url_key in state.get("open_alerts", {}):
+              continue  # safety
+
+            title = f"[ALERT] {a['name']} failing ({a['streak']} consecutive checks)"
+            body = "\n".join([
+              "### Endpoint failing 3+ checks in a row",
+              f"- **Name:** {a['name']}",
+              f"- **URL:** {a['url']}",
+              f"- **Consecutive failures:** {a['streak']}",
+              f"- **Last status code:** {a['last_status_code']}",
+              f"- **Last latency (ms):** {a['last_latency_ms']}",
+              f"- **Last error:** {a['last_error']}",
+              f"- **Timestamp (UTC):** {a['timestamp']}",
+              "",
+              "#### Next steps",
+              "- Validate endpoint manually",
+              "- Check if rate-limited / blocked from GitHub Actions",
+              "- Consider adding retries/backoff or a dedicated health endpoint"
+            ])
+
+            payload = {"title": title, "body": body}
+            # Optional labels: remove if your repo rejects unknown labels
+            payload["labels"] = ["monitoring", "incident"]
+
+            issue = gh_api("POST", f"https://api.github.com/repos/{repo}/issues", data=payload)
+
+            state.setdefault("open_alerts", {})[url_key] = issue["number"]
+            created += 1
+
+          # ---- Close issues on recovery ----
+          for r in recoveries:
+            url_key = r["url"]
+            issue_number = r.get("issue_number") or state.get("open_alerts", {}).get(url_key)
+            if not issue_number:
+              continue
+
+            # Add a recovery comment
+            comment_body = "\n".join([
+              "✅ **Recovered**",
+              "",
+              f"- **Endpoint:** {r['name']}",
+              f"- **URL:** {r['url']}",
+              f"- **Status code:** {r['status_code']}",
+              f"- **Latency (ms):** {r['latency_ms']}",
+              f"- **Timestamp (UTC):** {r['timestamp']}",
+              "",
+              "Auto-closed by the monitoring workflow."
+            ])
+
+            gh_api(
+              "POST",
+              f"https://api.github.com/repos/{repo}/issues/{issue_number}/comments",
+              data={"body": comment_body}
+            )
+
+            # Close the issue
+            gh_api(
+              "PATCH",
+              f"https://api.github.com/repos/{repo}/issues/{issue_number}",
+              data={"state": "closed"}
+            )
+
+            # Remove alert so it can trigger again in the future
+            state.get("open_alerts", {}).pop(url_key, None)
+            closed += 1
+
+          with open(state_path, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+
+          print(f"Created {created} issue(s), closed {closed} issue(s).")
+          PY
