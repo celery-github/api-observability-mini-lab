@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>API Observability Mini-Lab</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+      .card { border: 1px solid #e5e5e5; border-radius: 12px; padding: 16px; }
+      .ok { color: #137333; font-weight: 700; }
+      .bad { color: #b00020; font-weight: 700; }
+      .muted { color: #666; font-size: 14px; }
+      a { color: inherit; }
+    </style>
+  </head>
+  <body>
+    <h1>API Observability Mini-Lab</h1>
+    <p class="muted">Updated from GitHub Actions. Metrics: status + latency.</p>
+    <div id="status" class="grid"></div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
